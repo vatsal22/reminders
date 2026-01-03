@@ -5,10 +5,11 @@ Fuzzy search and browse Apple Reminders from the command line or as an MCP serve
 ## Features
 
 - **Fuzzy search** with typo tolerance across all your reminders
+- **Create reminders** - add new reminders via CLI or MCP
 - **Browse by list** - view reminders organized by list
 - **Filter by status** - pending, completed, flagged, or due soon
 - **Auto-indexing** - index automatically rebuilds when reminders change
-- **Multiple interfaces** - CLI or MCP server
+- **Multiple interfaces** - CLI, MCP server, or Claude Code plugin
 
 ## Requirements
 
@@ -18,13 +19,37 @@ Fuzzy search and browse Apple Reminders from the command line or as an MCP serve
 
 ## Installation
 
+### Homebrew
+
+```bash
+brew install cardmagic/tap/reminders
+```
+
 ### npm
 
 ```bash
 npm install -g @cardmagic/reminders
 ```
 
+### Claude Code Plugin (recommended)
+
+Install as a plugin to get skills (auto-invoked) and slash commands:
+
+```bash
+# Add the marketplace
+claude plugin marketplace add cardmagic/reminders
+
+# Install the plugin
+claude plugin install reminders@cardmagic
+```
+
+This gives you:
+- **Skill**: Claude automatically searches reminders when you ask about tasks/todos
+- **Slash commands**: `/reminders:search`, `/reminders:pending`, `/reminders:lists`, and more
+
 ### MCP Server
+
+For direct MCP tool access without the plugin:
 
 ```bash
 claude mcp add --transport stdio reminders -- npx -y @cardmagic/reminders --mcp
@@ -45,6 +70,12 @@ cd reminders
 pnpm install
 pnpm build
 pnpm link --global
+
+# Then add as plugin OR MCP server:
+claude plugin marketplace add cardmagic/reminders
+claude plugin install reminders@cardmagic
+# OR
+claude mcp add --transport stdio reminders -- reminders --mcp
 ```
 
 ## Granting Full Disk Access
@@ -91,6 +122,16 @@ reminders stats
 
 # Force rebuild the index
 reminders index
+
+# Create a new reminder (auto-detects list from content)
+reminders add "Buy milk"                    # → Groceries list
+reminders add "Call mom" --list "Family" --due tomorrow
+reminders add "Meeting prep" --due 2024-01-15 --time 09:00 --priority high
+reminders add "Important task" --flagged --notes "Don't forget!"
+
+# Mark a reminder as completed
+reminders done "Buy milk"                   # Searches all lists
+reminders done "meeting" --list "Work"      # Search in specific list
 ```
 
 ### CLI Options
@@ -104,6 +145,31 @@ reminders index
 | `-n, --limit <n>` | Max results (default varies by command) |
 | `-a, --all` | Include completed (for `list` command) |
 | `-d, --days <n>` | Days to look ahead (for `due` command) |
+
+### Claude Code Plugin
+
+When installed as a plugin, you get:
+
+**Skill** (auto-invoked): Claude automatically manages reminders when you ask things like:
+- "What's on my grocery list?"
+- "Show my pending tasks"
+- "What reminders are due this week?"
+- "Add milk to my grocery list"
+- "Mark the milk reminder as done"
+
+**Slash Commands**:
+
+| Command | Description |
+|---------|-------------|
+| `/reminders:search <query>` | Fuzzy search with optional filters |
+| `/reminders:pending` | Show pending reminders |
+| `/reminders:completed` | Show recently completed |
+| `/reminders:flagged` | Show flagged reminders |
+| `/reminders:due` | Show reminders due soon |
+| `/reminders:lists` | List all reminder lists |
+| `/reminders:list "Name"` | Show reminders in a specific list |
+| `/reminders:create "Title"` | Create a new reminder (auto-detects list) |
+| `/reminders:done "Title"` | Mark a reminder as completed |
 
 ### MCP Server
 
@@ -119,6 +185,8 @@ When installed as an MCP server, these tools are available:
 | `list_reminder_lists` | List all lists with counts |
 | `get_list_reminders` | Get reminders in a specific list |
 | `get_reminder_stats` | Get index statistics |
+| `create_reminder` | Create a new reminder (auto-detects list) |
+| `complete_reminder` | Mark a reminder as completed |
 
 #### Manual MCP Configuration
 

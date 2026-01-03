@@ -15,6 +15,7 @@ import {
   getLists,
   getRemindersInList,
 } from './searcher.js'
+import { createReminder, completeReminder } from './applescript.js'
 import type { SearchOptions, IndexedReminder } from './types.js'
 import { priorityLabel, unixToDate } from './types.js'
 
@@ -203,6 +204,65 @@ export async function startMcpServer(): Promise<void> {
           inputSchema: {
             type: 'object',
             properties: {},
+          },
+        },
+        {
+          name: 'create_reminder',
+          description:
+            'Create a new reminder in Apple Reminders. Returns the created reminder details.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              title: {
+                type: 'string',
+                description: 'The title/name of the reminder (required)',
+              },
+              list: {
+                type: 'string',
+                description: 'List to add reminder to (default: "Reminders")',
+              },
+              notes: {
+                type: 'string',
+                description: 'Notes/body text for the reminder',
+              },
+              due_date: {
+                type: 'string',
+                description: 'Due date in YYYY-MM-DD format, or "today" or "tomorrow"',
+              },
+              due_time: {
+                type: 'string',
+                description: 'Due time in HH:MM format (24-hour). Requires due_date.',
+              },
+              priority: {
+                type: 'string',
+                enum: ['high', 'medium', 'low'],
+                description: 'Priority level: high, medium, or low',
+              },
+              flagged: {
+                type: 'boolean',
+                description: 'Whether to mark the reminder as flagged',
+              },
+            },
+            required: ['title'],
+          },
+        },
+        {
+          name: 'complete_reminder',
+          description:
+            'Mark a reminder as completed. Searches for reminders by title (partial match) and marks the first match as done.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              title: {
+                type: 'string',
+                description: 'The title (or partial title) of the reminder to complete',
+              },
+              list: {
+                type: 'string',
+                description: 'Optional: only search in this specific list',
+              },
+            },
+            required: ['title'],
           },
         },
       ],
@@ -459,6 +519,133 @@ export async function startMcpServer(): Promise<void> {
                 text: `Reminder Index Statistics\n\nTotal: ${stats.totalReminders.toLocaleString()}\nPending: ${stats.pendingReminders.toLocaleString()}\nCompleted: ${stats.completedReminders.toLocaleString()}\nLists: ${stats.totalLists.toLocaleString()}\nIndexed at: ${stats.indexedAt.toLocaleString()}\nDate range: ${stats.oldestReminder.toLocaleDateString()} - ${stats.newestReminder.toLocaleDateString()}`,
               },
             ],
+          }
+        }
+
+        case 'create_reminder': {
+          const createArgs = args as {
+            title: string
+            list?: string
+            notes?: string
+            due_date?: string
+            due_time?: string
+            priority?: 'high' | 'medium' | 'low'
+            flagged?: boolean
+          }
+
+          if (!createArgs.title) {
+            return {
+              content: [{ type: 'text', text: 'Title is required to create a reminder.' }],
+              isError: true,
+            }
+          }
+
+          let dueDate: Date | undefined
+
+          if (createArgs.due_date) {
+            const now = new Date()
+            if (createArgs.due_date === 'today') {
+              dueDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 9, 0)
+            } else if (createArgs.due_date === 'tomorrow') {
+              dueDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 9, 0)
+            } else {
+              const parsed = new Date(createArgs.due_date)
+              if (isNaN(parsed.getTime())) {
+                return {
+                  content: [{ type: 'text', text: `Invalid date format: ${createArgs.due_date}. Use YYYY-MM-DD, "today", or "tomorrow".` }],
+                  isError: true,
+                }
+              }
+              dueDate = new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate(), 9, 0)
+            }
+
+            if (createArgs.due_time) {
+              const timeParts = createArgs.due_time.split(':')
+              if (timeParts.length === 2) {
+                const hours = parseInt(timeParts[0], 10)
+                const minutes = parseInt(timeParts[1], 10)
+                if (!isNaN(hours) && !isNaN(minutes)) {
+                  dueDate.setHours(hours, minutes)
+                }
+              }
+            }
+          }
+
+          // Get available lists for smart guessing when no list is specified
+          let availableLists: { name: string }[] | undefined
+          if (!createArgs.list) {
+            try {
+              availableLists = getLists()
+              closeConnections()
+            } catch {
+              // If we can't get lists (index not built), proceed without guessing
+              availableLists = undefined
+            }
+          }
+
+          const result = createReminder({
+            title: createArgs.title,
+            list: createArgs.list,
+            notes: createArgs.notes,
+            dueDate,
+            priority: createArgs.priority,
+            flagged: createArgs.flagged,
+            availableLists,
+          })
+
+          let response = `Reminder created successfully!\n\nTitle: ${result.title}\nList: ${result.list}`
+          if (result.wasGuessed) {
+            response += ` (auto-detected)`
+          }
+          if (dueDate) {
+            response += `\nDue: ${dueDate.toLocaleString()}`
+          }
+          if (createArgs.priority) {
+            response += `\nPriority: ${createArgs.priority}`
+          }
+          if (createArgs.flagged) {
+            response += `\nFlagged: Yes`
+          }
+
+          return {
+            content: [{ type: 'text', text: response }],
+          }
+        }
+
+        case 'complete_reminder': {
+          const completeArgs = args as {
+            title: string
+            list?: string
+          }
+
+          if (!completeArgs.title) {
+            return {
+              content: [{ type: 'text', text: 'Title is required to complete a reminder.' }],
+              isError: true,
+            }
+          }
+
+          let listToSearch = completeArgs.list
+
+          // If no list specified, use the index to find the most likely list
+          if (!listToSearch) {
+            // Ensure index exists (will rebuild if needed)
+            ensureIndex()
+
+            const searchResults = search({ query: completeArgs.title, completed: false, limit: 1 })
+            if (searchResults.length > 0) {
+              listToSearch = searchResults[0].reminder.listName
+            }
+            closeConnections()
+          }
+
+          const result = completeReminder(completeArgs.title, listToSearch)
+
+          return {
+            content: [{
+              type: 'text',
+              text: `Reminder completed!\n\nTitle: ${result.title}\nList: ${result.list}`,
+            }],
           }
         }
 

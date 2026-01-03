@@ -1,0 +1,12 @@
+{
+  "name": "reminders",
+  "description": "Fuzzy search and browse Apple Reminders",
+  "version": "1.0.0",
+  "author": {
+    "name": "Lucas Carlson",
+    "url": "https://github.com/cardmagic"
+  },
+  "repository": "https://github.com/cardmagic/reminders",
+  "license": "MIT",
+  "keywords": ["macos", "reminders", "apple", "search", "tasks"]
+}

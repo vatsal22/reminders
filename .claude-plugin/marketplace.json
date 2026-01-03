@@ -1,0 +1,15 @@
+{
+  "name": "cardmagic",
+  "owner": {
+    "name": "Lucas Carlson",
+    "email": "lucas@carlson.net"
+  },
+  "plugins": [
+    {
+      "name": "reminders",
+      "source": "./",
+      "description": "Fuzzy search and browse Apple Reminders",
+      "version": "1.0.0"
+    }
+  ]
+}

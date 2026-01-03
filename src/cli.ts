@@ -1,7 +1,7 @@
 import { createRequire } from 'module'
 import { program } from 'commander'
 import chalk from 'chalk'
-import { buildIndex, updateIndex, getStats } from './indexer.js'
+import { buildIndex, updateIndex, getStats, ensureIndex } from './indexer.js'
 
 const require = createRequire(import.meta.url)
 const { version } = require('../package.json')
@@ -24,6 +24,7 @@ import {
   formatIndexProgress,
   formatListHeader,
 } from './formatter.js'
+import { createReminder, completeReminder } from './applescript.js'
 import type { SearchOptions } from './types.js'
 
 export function runCli(): void {
@@ -349,6 +350,113 @@ export function runCli(): void {
         process.exit(1)
       }
       console.log(formatStats(stats))
+    })
+
+  program
+    .command('add <title>')
+    .description('Create a new reminder')
+    .option('-l, --list <name>', 'List to add reminder to (default: Reminders)')
+    .option('-n, --notes <text>', 'Notes/body for the reminder')
+    .option('-d, --due <date>', 'Due date (YYYY-MM-DD, "today", or "tomorrow")')
+    .option('-t, --time <time>', 'Due time in HH:MM format (requires --due)')
+    .option('-p, --priority <level>', 'Priority: high, medium, or low')
+    .option('-f, --flagged', 'Mark as flagged')
+    .action((title, options) => {
+      try {
+        let dueDate: Date | undefined
+
+        if (options.due) {
+          const now = new Date()
+          if (options.due === 'today') {
+            dueDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 9, 0)
+          } else if (options.due === 'tomorrow') {
+            dueDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 9, 0)
+          } else {
+            const parsed = new Date(options.due)
+            if (isNaN(parsed.getTime())) {
+              console.error(chalk.red(`Invalid date format: ${options.due}`))
+              console.error(chalk.dim('Use YYYY-MM-DD, "today", or "tomorrow"'))
+              process.exit(1)
+            }
+            dueDate = new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate(), 9, 0)
+          }
+
+          if (options.time) {
+            const timeParts = options.time.split(':')
+            if (timeParts.length === 2) {
+              const hours = parseInt(timeParts[0], 10)
+              const minutes = parseInt(timeParts[1], 10)
+              if (!isNaN(hours) && !isNaN(minutes)) {
+                dueDate.setHours(hours, minutes)
+              }
+            }
+          }
+        }
+
+        // Get available lists for smart guessing when no list is specified
+        let availableLists: { name: string }[] | undefined
+        if (!options.list) {
+          try {
+            availableLists = getLists()
+            closeConnections()
+          } catch {
+            // If we can't get lists (index not built), proceed without guessing
+            availableLists = undefined
+          }
+        }
+
+        const result = createReminder({
+          title,
+          list: options.list,
+          notes: options.notes,
+          dueDate,
+          priority: options.priority,
+          flagged: options.flagged,
+          availableLists,
+        })
+
+        console.log(chalk.green('✓ Reminder created'))
+        console.log(`  ${chalk.bold(result.title)}`)
+        const listNote = result.wasGuessed ? chalk.cyan(' (auto-detected)') : ''
+        console.log(`  ${chalk.dim(`List: ${result.list}`)}${listNote}`)
+        if (dueDate) {
+          console.log(`  ${chalk.dim(`Due: ${dueDate.toLocaleString()}`)}`)
+        }
+      } catch (error) {
+        console.error(chalk.red('Error:'), (error as Error).message)
+        process.exit(1)
+      }
+    })
+
+  program
+    .command('done <title>')
+    .description('Mark a reminder as completed')
+    .option('-l, --list <name>', 'Only search in this list')
+    .action((title, options) => {
+      try {
+        let listToSearch = options.list
+
+        // If no list specified, use the index to find the most likely list
+        if (!listToSearch) {
+          // Ensure index exists (will rebuild if needed)
+          ensureIndex()
+
+          const searchResults = search({ query: title, completed: false, limit: 1 })
+          if (searchResults.length > 0) {
+            listToSearch = searchResults[0].reminder.listName
+          }
+          closeConnections()
+        }
+
+        const result = completeReminder(title, listToSearch)
+
+        console.log(chalk.green('✓ Reminder completed'))
+        console.log(`  ${chalk.strikethrough(result.title)}`)
+        console.log(`  ${chalk.dim(`List: ${result.list}`)}`)
+      } catch (error) {
+        console.error(chalk.red('Error:'), (error as Error).message)
+        process.exit(1)
+      }
     })
 
   program
