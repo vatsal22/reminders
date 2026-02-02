@@ -27,11 +27,12 @@ npm install -g @cardmagic/reminders
 Use this skill when user asks about:
 - Viewing reminders, tasks, or todos
 - Adding or creating reminders
+- Editing or updating existing reminders
 - Completing or marking tasks as done
 - Grocery lists or shopping lists
 - What's due soon or overdue
 
-**Proactive triggers:** "reminders", "tasks", "todos", "grocery list", "add reminder", "remind me", "mark done", "complete task", "what's on my list", "due soon"
+**Proactive triggers:** "reminders", "tasks", "todos", "grocery list", "add reminder", "remind me", "mark done", "complete task", "what's on my list", "due soon", "edit reminder", "update reminder", "change reminder"
 
 ## Browse Commands
 
@@ -90,6 +91,35 @@ reminders done "Buy milk"
 reminders done "meeting notes" --list "Work"
 ```
 
+## Edit Reminders
+
+The `edit` command modifies existing reminders:
+
+```bash
+# Change the title
+reminders edit "Buy milk" --new-title "Buy oat milk"
+
+# Update due date
+reminders edit "Doctor appointment" --due 2024-02-15
+reminders edit "Meeting" --due tomorrow --time 14:00
+
+# Clear due date
+reminders edit "Flexible task" --due none
+
+# Update priority and flag status
+reminders edit "Urgent task" --priority high --flagged
+reminders edit "Done being urgent" --priority none --unflagged
+
+# Add or update notes
+reminders edit "Project" --notes "Updated requirements"
+
+# Search in specific list (faster)
+reminders edit "meeting notes" --list "Work" --new-title "Weekly standup notes"
+
+# Combine multiple changes
+reminders edit "Task" --new-title "Updated task" --due tomorrow --priority medium --notes "New details"
+```
+
 ## Search Commands
 
 ```bash
@@ -107,11 +137,13 @@ reminders search "project" --completed
 | Option | Description | Example |
 |--------|-------------|---------|
 | `--list, -l` | Filter by list name | `--list "Groceries"` |
-| `--due, -d` | Due date (YYYY-MM-DD, today, tomorrow) | `--due tomorrow` |
+| `--due, -d` | Due date (YYYY-MM-DD, today, tomorrow, none) | `--due tomorrow` |
 | `--time, -t` | Due time (HH:MM) | `--time 09:00` |
-| `--priority, -p` | Priority level | `--priority high` |
-| `--notes, -n` | Add notes | `--notes "Don't forget!"` |
+| `--priority, -p` | Priority level (high, medium, low, none) | `--priority high` |
+| `--notes, -n` | Add or update notes | `--notes "Don't forget!"` |
 | `--flagged, -f` | Mark as flagged | `--flagged` |
+| `--unflagged, -F` | Remove flagged status (edit only) | `--unflagged` |
+| `--new-title, -T` | New title for reminder (edit only) | `--new-title "Updated"` |
 | `--pending` | Show only pending | `--pending` |
 | `--completed` | Show only completed | `--completed` |
 | `--all, -a` | Include completed | `--all` |
