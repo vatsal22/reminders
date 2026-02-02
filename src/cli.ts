@@ -24,7 +24,7 @@ import {
   formatIndexProgress,
   formatListHeader,
 } from './formatter.js'
-import { createReminder, completeReminder } from './applescript.js'
+import { createReminder, completeReminder, editReminder } from './applescript.js'
 import type { SearchOptions } from './types.js'
 
 export function runCli(): void {
@@ -453,6 +453,101 @@ export function runCli(): void {
         console.log(chalk.green('✓ Reminder completed'))
         console.log(`  ${chalk.strikethrough(result.title)}`)
         console.log(`  ${chalk.dim(`List: ${result.list}`)}`)
+      } catch (error) {
+        console.error(chalk.red('Error:'), (error as Error).message)
+        process.exit(1)
+      }
+    })
+
+  program
+    .command('edit <title>')
+    .description('Edit an existing reminder')
+    .option('-l, --list <name>', 'Only search in this list')
+    .option('-T, --new-title <text>', 'New title for the reminder')
+    .option('-n, --notes <text>', 'Update notes/body')
+    .option('-d, --due <date>', 'New due date (YYYY-MM-DD, "today", "tomorrow", or "none" to clear)')
+    .option('-t, --time <time>', 'Due time in HH:MM format (requires --due)')
+    .option('-p, --priority <level>', 'Priority: high, medium, low, or none')
+    .option('-f, --flagged', 'Mark as flagged')
+    .option('-F, --unflagged', 'Remove flagged status')
+    .action((title, options) => {
+      try {
+        let listToSearch = options.list
+
+        // If no list specified, use the index to find the most likely list
+        if (!listToSearch) {
+          ensureIndex()
+          const searchResults = search({ query: title, completed: false, limit: 1 })
+          if (searchResults.length > 0) {
+            listToSearch = searchResults[0].reminder.listName
+          }
+          closeConnections()
+        }
+
+        let dueDate: Date | null | undefined
+
+        if (options.due) {
+          if (options.due === 'none') {
+            dueDate = null
+          } else {
+            const now = new Date()
+            if (options.due === 'today') {
+              dueDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 9, 0)
+            } else if (options.due === 'tomorrow') {
+              dueDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 9, 0)
+            } else {
+              const parsed = new Date(options.due)
+              if (isNaN(parsed.getTime())) {
+                console.error(chalk.red(`Invalid date format: ${options.due}`))
+                console.error(chalk.dim('Use YYYY-MM-DD, "today", "tomorrow", or "none"'))
+                process.exit(1)
+              }
+              dueDate = new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate(), 9, 0)
+            }
+
+            if (options.time) {
+              const timeParts = options.time.split(':')
+              if (timeParts.length === 2) {
+                const hours = parseInt(timeParts[0], 10)
+                const minutes = parseInt(timeParts[1], 10)
+                if (!isNaN(hours) && !isNaN(minutes)) {
+                  dueDate.setHours(hours, minutes)
+                }
+              }
+            }
+          }
+        }
+
+        // Determine flagged status
+        let flagged: boolean | undefined
+        if (options.flagged) {
+          flagged = true
+        } else if (options.unflagged) {
+          flagged = false
+        }
+
+        const result = editReminder({
+          searchTitle: title,
+          searchList: listToSearch,
+          newTitle: options.newTitle,
+          notes: options.notes,
+          dueDate,
+          priority: options.priority,
+          flagged,
+        })
+
+        console.log(chalk.green('✓ Reminder updated'))
+        if (result.originalTitle !== result.newTitle) {
+          console.log(`  ${chalk.strikethrough(result.originalTitle)} → ${chalk.bold(result.newTitle)}`)
+        } else {
+          console.log(`  ${chalk.bold(result.newTitle)}`)
+        }
+        console.log(`  ${chalk.dim(`List: ${result.list}`)}`)
+        if (dueDate) {
+          console.log(`  ${chalk.dim(`Due: ${dueDate.toLocaleString()}`)}`)
+        } else if (dueDate === null) {
+          console.log(`  ${chalk.dim('Due date cleared')}`)
+        }
       } catch (error) {
         console.error(chalk.red('Error:'), (error as Error).message)
         process.exit(1)
